@@ -3,120 +3,138 @@ import numpy as np
 import pandas as pd
 from sklearn.preprocessing import StandardScaler
 from sklearn.naive_bayes import GaussianNB
-from sklearn.cluster import KMeans
-from collections import Counter
 from sklearn.impute import SimpleImputer
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score
 import mysql.connector
 import time
 import os
+from PIL import Image
+from rembg import remove
 
+# Fungsi untuk menyambung dan memasukkan data ke database
 def insert_into_database(kelas_pred):
-    # Ganti dengan informasi koneksi ke database MySQL Anda
     db_config = {
         'host': 'localhost',
         'user': 'root',
         'password': '',
         'database': 'tomatin'
     }
-
     try:
-        # Membuat koneksi ke database
         conn = mysql.connector.connect(**db_config)
         cursor = conn.cursor()
-
-        # Menyisipkan nilai kelas_pred ke dalam tabel tertentu
         query = "INSERT INTO kematangan_tomat (kematangan) VALUES (%s)"
         values = (kelas_pred,)
-
         cursor.execute(query, values)
         conn.commit()
-
         print("Data berhasil dimasukkan ke database!")
-
     except mysql.connector.Error as err:
         print(f"Error: {err}")
-
     finally:
         if conn.is_connected():
             cursor.close()
             conn.close()
 
-# Path penyimpanan
-path_tomat = 'D:/New folder/pcv_sistem_cerdas/Tomat.In_PCV_SistemCerdas/TM_BARU'
-file_excel = 'D:/New folder/pcv_sistem_cerdas/Tomat.In_PCV_SistemCerdas/hasil_Matang.xlsx'  # Pastikan file ini ada di path yang benar
-file_path_excel = os.path.join(path_tomat, file_excel)
+# Fungsi untuk memeriksa keberadaan file
+def check_file_exists(file_path):
+    if not os.path.exists(file_path):
+        print(f"File tidak ditemukan di: {file_path}")
+        exit()
 
-# Cek apakah file Excel ada
-if not os.path.exists(file_path_excel):
-    print(f"File Excel tidak ditemukan di: {file_path_excel}")
-    exit()
+# Fungsi untuk membaca dataset dari Excel
+def read_dataset(file_path):
+    dataset = pd.read_excel(file_path)
+    
+    # Pastikan hanya mengambil kolom numerik untuk fitur
+    fitur = dataset.iloc[:, 1:4].apply(pd.to_numeric, errors='coerce').values  # Kolom fitur warna (R, G, B)
+    kelas = dataset.iloc[:, 4].values  # Kolom kelas kematangan
 
-# Baca file Excel
-dataset = pd.read_excel(file_path_excel)
+    # Menghapus nilai NaN yang mungkin muncul akibat konversi
+    fitur = np.nan_to_num(fitur)
+    
+    return fitur, kelas
 
-fitur = dataset.iloc[:, 1:4].values
-kelas = dataset.iloc[:, 4].values
-tes_fitur = [[]]
+# Fungsi untuk menghapus latar belakang gambar dan menyimpannya
+def remove_background(file_image, output_path):
+    input_image = Image.open(file_image)
+    output_image = remove(input_image)
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    output_image.save(output_path)
+    print(f"Gambar dengan latar belakang dihapus disimpan di {output_path}")
+    return np.array(output_image)
 
-# Gabungkan path ke file gambar
-file_image = 'tomat1.jpg'  # Ganti dengan nama file gambar yang benar
-file_name = os.path.join(path_tomat, file_image)
+# Fungsi untuk menghitung nilai RGB pada piksel tengah
+def get_center_pixel_color(rgb_image):
+    tinggi, lebar, _ = rgb_image.shape
+    return rgb_image[tinggi // 2, lebar // 2]
 
-# Cek apakah file gambar ada
-if not os.path.exists(file_name):
-    print(f"File gambar tidak ditemukan di: {file_name}")
-    exit()
+# Fungsi untuk melakukan normalisasi dan imputasi fitur
+def preprocess_features(fitur):
+    scaler = StandardScaler()
+    fitur = scaler.fit_transform(fitur)
 
-# Baca gambar
-src = cv2.imread(file_name, 1)
-tmp = cv2.cvtColor(src, cv2.COLOR_BGR2GRAY)
-_, mask = cv2.threshold(tmp, 127, 255, cv2.THRESH_BINARY_INV)
+    imputer = SimpleImputer(strategy='mean')
+    fitur = imputer.fit_transform(fitur)
+    return fitur, scaler, imputer
 
-mask = cv2.dilate(mask.copy(), None, iterations=10)
-mask = cv2.erode(mask.copy(), None, iterations=10)
-b, g, r = cv2.split(src)
-rgba = [b, g, r, mask]
-dst = cv2.merge(rgba, 4)
+# Fungsi untuk inisialisasi dan pelatihan classifier
+def train_classifier(fitur, kelas):
+    classifier = GaussianNB()
+    classifier.fit(fitur, kelas)
+    return classifier
 
-contours, hierarchy = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-selected = max(contours, key=cv2.contourArea)
-x, y, w, h = cv2.boundingRect(selected)
-cropped = dst[y:y+h, x:x+w]
-mask = mask[y:y+h, x:x+w]
-
-# RGB
-rgb_image = cv2.cvtColor(cropped, cv2.COLOR_BGR2RGB)
-image = rgb_image.reshape((rgb_image.shape[0] * rgb_image.shape[1], 3))
-clt = KMeans(n_clusters=3)
-labels = clt.fit_predict(image)
-label_counts = Counter(labels)
-dom_color = clt.cluster_centers_[label_counts.most_common(1)[0][0]]
-
-tes_fitur[0].append(dom_color[0])  # R
-tes_fitur[0].append(dom_color[1])  # G
-tes_fitur[0].append(dom_color[2])  # B
-
-
-# Normalisasi fitur
-scaler = StandardScaler()
-scaler.fit(fitur)
-
-imputer = SimpleImputer(strategy='mean')
-
-# Melakukan imputasi pada fitur-fitur yang memiliki nilai NaN
-fitur = imputer.fit_transform(fitur)
-tes_fitur = imputer.transform([tes_fitur[0]])  # Ubah ini untuk menggunakan imputasi yang benar
-
-# Menggunakan Gaussian Naive Bayes sebagai classifier
-classifier = GaussianNB()
-classifier.fit(fitur, kelas)
-
-while True:
-    # Melakukan prediksi kelas
+# Fungsi untuk prediksi dan memasukkan hasil ke database
+def predict_and_store(classifier, tes_fitur):
     kelas_pred = classifier.predict(tes_fitur)
     print("Kelas Prediksi:", kelas_pred[0])
-
-    # Insert kematangan tomat ke dalam database
     insert_into_database(kelas_pred[0])
+    return kelas_pred[0]
 
-    time.sleep(10)
+# Main program
+def main():
+    # Path penyimpanan
+    path_tomat = 'D:/New folder/pcv_sistem_cerdas/Tomat.In_PCV_SistemCerdas/TOMAT'
+    file_excel = 'D:/New folder/pcv_sistem_cerdas/Tomat.In_PCV_SistemCerdas/dataset_tomat.in.xlsx'
+    file_image = 'tomat60.jpg'
+    output_path = 'D:/New folder/pcv_sistem_cerdas/Tomat.In_PCV_SistemCerdas/output_tomat.png'
+
+    # Memastikan file Excel dan gambar ada
+    file_path_excel = os.path.join(path_tomat, file_excel)
+    check_file_exists(file_path_excel)
+
+    file_name = os.path.join(path_tomat, file_image)
+    check_file_exists(file_name)
+
+    # Membaca dataset dan gambar
+    fitur, kelas = read_dataset(file_path_excel)
+    output_image_np = remove_background(file_name, output_path)
+
+    # Konversi gambar ke RGB dan ambil piksel tengah
+    rgb_image = cv2.cvtColor(output_image_np, cv2.COLOR_RGBA2RGB)
+    piksel_tengah = get_center_pixel_color(rgb_image)
+
+    # Normalisasi dan imputasi data pelatihan
+    fitur, scaler, imputer = preprocess_features(fitur)
+
+    # Membagi dataset menjadi data latih dan data uji
+    X_train, X_test, y_train, y_test = train_test_split(fitur, kelas, test_size=0.3, random_state=42)
+
+    # Inisialisasi dan latih classifier
+    classifier = train_classifier(X_train, y_train)
+
+    # Memprediksi pada data uji dan menghitung akurasi
+    y_pred = classifier.predict(X_test)
+    accuracy = accuracy_score(y_test, y_pred)
+    print(f"Akurasi Model: {accuracy * 100:.2f}%")
+
+    # Imputasi dan normalisasi tes_fitur
+    tes_fitur = imputer.transform([piksel_tengah])
+    tes_fitur = scaler.transform(tes_fitur)
+
+    # Loop untuk prediksi kelas kematangan
+    while True:
+        predict_and_store(classifier, tes_fitur)
+        time.sleep(10)
+
+if __name__ == "__main__":
+    main()
