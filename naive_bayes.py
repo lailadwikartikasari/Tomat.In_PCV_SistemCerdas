@@ -42,8 +42,8 @@ def insert_into_database(kelas_pred):
             conn.close()
 
 # Path penyimpanan
-path_tomat = 'D:/New folder/pcv_sistem_cerdas/TM_BARU'
-file_excel = 'D:/New folder/pcv_sistem_cerdas/hasil_Matang.xlsx'  # Pastikan file ini ada di path yang benar
+path_tomat = 'D:/New folder/pcv_sistem_cerdas/Tomat.In_PCV_SistemCerdas/TM_BARU'
+file_excel = 'D:/New folder/pcv_sistem_cerdas/Tomat.In_PCV_SistemCerdas/hasil_Matang.xlsx'  # Pastikan file ini ada di path yang benar
 file_path_excel = os.path.join(path_tomat, file_excel)
 
 # Cek apakah file Excel ada
@@ -84,17 +84,18 @@ x, y, w, h = cv2.boundingRect(selected)
 cropped = dst[y:y+h, x:x+w]
 mask = mask[y:y+h, x:x+w]
 
-# HSV
-hsv_image = cv2.cvtColor(cropped, cv2.COLOR_BGR2HSV)
-image = hsv_image.reshape((hsv_image.shape[0] * hsv_image.shape[1], 3))
+# RGB
+rgb_image = cv2.cvtColor(cropped, cv2.COLOR_BGR2RGB)
+image = rgb_image.reshape((rgb_image.shape[0] * rgb_image.shape[1], 3))
 clt = KMeans(n_clusters=3)
 labels = clt.fit_predict(image)
 label_counts = Counter(labels)
 dom_color = clt.cluster_centers_[label_counts.most_common(1)[0][0]]
 
-tes_fitur[0].append(dom_color[0])
-tes_fitur[0].append(dom_color[1])
-tes_fitur[0].append(dom_color[2])
+tes_fitur[0].append(dom_color[0])  # R
+tes_fitur[0].append(dom_color[1])  # G
+tes_fitur[0].append(dom_color[2])  # B
+
 
 # Normalisasi fitur
 scaler = StandardScaler()
