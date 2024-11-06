@@ -1,92 +1,121 @@
 import cv2
-import os
-import pandas as pd
 import numpy as np
-from PIL import Image
-from rembg import remove
+import pandas as pd
+from sklearn.preprocessing import StandardScaler
+from sklearn.naive_bayes import GaussianNB
+from sklearn.cluster import KMeans
+from collections import Counter
+from sklearn.impute import SimpleImputer
+import mysql.connector
+import time
+import os
 
-class SistemCerdasPCV:
-    @staticmethod
-    def resize_image(image, lebar=100, tinggi=100):
-        lebar = int(image.shape[1] * lebar / 100)
-        tinggi = int(image.shape[0] * tinggi / 100)
-        dimensi = (lebar, tinggi)
-        return cv2.resize(image, dimensi)
+def insert_into_database(kelas_pred):
+    # Ganti dengan informasi koneksi ke database MySQL Anda
+    db_config = {
+        'host': 'localhost',
+        'user': 'root',
+        'password': '',
+        'database': 'tomatin'
+    }
 
-    @staticmethod
-    def adjust_brightness_contrast(image, brightness=30, contrast=30):
-        return cv2.convertScaleAbs(image, alpha=1 + (contrast / 100), beta=brightness)
+    try:
+        # Membuat koneksi ke database
+        conn = mysql.connector.connect(**db_config)
+        cursor = conn.cursor()
 
-    @staticmethod
-    def ambil_rgb_real(gambar):
-        # Pastikan gambar dalam format RGB
-        gambar_rgb = cv2.cvtColor(gambar, cv2.COLOR_BGR2RGB)
-        
-        # Ambil nilai RGB dari piksel tengah gambar
-        tinggi, lebar, _ = gambar_rgb.shape
-        piksel_tengah = gambar_rgb[tinggi // 2, lebar // 2]
-        
-        print("Nilai RGB real dari piksel tengah:", piksel_tengah)
-        return piksel_tengah
+        # Menyisipkan nilai kelas_pred ke dalam tabel tertentu
+        query = "INSERT INTO kematangan_tomat (kematangan) VALUES (%s)"
+        values = (kelas_pred,)
 
-    @staticmethod
-    def label_kematangan(rgb):
-        R, G, B = rgb
-        
-        # Atur batasan untuk kematangan berdasarkan nilai RGB
-        if R > 150 and G < 150 and B < 150:  # Merah pekat (R tinggi)
-            return 'Matang'
-        elif R > 120 and G > 120 and B < 130:  # Kuning ke oranye
-            return 'Matang'
-        else:  # Jika tidak memenuhi syarat untuk Merah Pekat, Matang, atau Setengah Matang
-            return 'Matang'
+        cursor.execute(query, values)
+        conn.commit()
 
-    @staticmethod
-    def simpan_hasil(gambar, path_output):
-        gambar.save(path_output)
+        print("Data berhasil dimasukkan ke database!")
 
-    @staticmethod
-    def remove_background(input_path, output_path):
-        # Membuka gambar dengan PIL
-        input_image = Image.open(input_path)
-        
-        # Menghapus latar belakang
-        output_image = remove(input_image)
-        
-        # Pastikan folder tujuan ada
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        
-        # Menyimpan hasil dalam format PNG agar latar belakang tembus
-        output_image.save(output_path)
-        print(f"Gambar dengan latar belakang dihapus disimpan di {output_path}")
+    except mysql.connector.Error as err:
+        print(f"Error: {err}")
 
-    @staticmethod
-    def proses_gambar(folder_path):
-        data = {'Nama Gambar': [], 'R': [], 'G': [], 'B': [], 'label': []}
-        
-        for namagambar in os.listdir(folder_path):
-            path_file = os.path.join(folder_path, namagambar)
-            if path_file.lower().endswith(('.png', '.jpg', '.jpeg')):
-                output_path = os.path.join("hasil_removeBG_Matang", f"hasil_{namagambar.split('.')[0]}.png")
-                SistemCerdasPCV.remove_background(path_file, output_path)
+    finally:
+        if conn.is_connected():
+            cursor.close()
+            conn.close()
 
-                # Load gambar hasil tanpa latar belakang untuk analisis lanjutan
-                gambar_asli = cv2.imread(output_path, cv2.IMREAD_UNCHANGED)
-                if gambar_asli is not None:
-                    rgb_real = SistemCerdasPCV.ambil_rgb_real(gambar_asli)
-                    label = SistemCerdasPCV.label_kematangan(rgb_real)
+# Path penyimpanan
+path_tomat = 'D:/New folder/pcv_sistem_cerdas/TM_BARU'
+file_excel = 'D:/New folder/pcv_sistem_cerdas/hasil_Matang.xlsx'  # Pastikan file ini ada di path yang benar
+file_path_excel = os.path.join(path_tomat, file_excel)
 
-                    data['Nama Gambar'].append(namagambar)
-                    data['R'].append(rgb_real[0])
-                    data['G'].append(rgb_real[1])
-                    data['B'].append(rgb_real[2])
-                    data['label'].append(label)
+# Cek apakah file Excel ada
+if not os.path.exists(file_path_excel):
+    print(f"File Excel tidak ditemukan di: {file_path_excel}")
+    exit()
 
-        df = pd.DataFrame(data)
-        df.to_excel('hasil_Matang.xlsx', index=False)
-        print("Data hasil pengolahan disimpan dalam 'hasil_Matang.xlsx'")
+# Baca file Excel
+dataset = pd.read_excel(file_path_excel)
 
-if __name__ == "__main__":
-    folder_path = "D:/New folder/Tomat.in/PCV_SistemCerdas_Tomat.In/REVISI/TM_BARU"
-    # os.makedirs("hasil_cropping_Setengah Matang", exist_ok=True)
-    SistemCerdasPCV.proses_gambar(folder_path)
+fitur = dataset.iloc[:, 1:4].values
+kelas = dataset.iloc[:, 4].values
+tes_fitur = [[]]
+
+# Gabungkan path ke file gambar
+file_image = 'tomat1.jpg'  # Ganti dengan nama file gambar yang benar
+file_name = os.path.join(path_tomat, file_image)
+
+# Cek apakah file gambar ada
+if not os.path.exists(file_name):
+    print(f"File gambar tidak ditemukan di: {file_name}")
+    exit()
+
+# Baca gambar
+src = cv2.imread(file_name, 1)
+tmp = cv2.cvtColor(src, cv2.COLOR_BGR2GRAY)
+_, mask = cv2.threshold(tmp, 127, 255, cv2.THRESH_BINARY_INV)
+
+mask = cv2.dilate(mask.copy(), None, iterations=10)
+mask = cv2.erode(mask.copy(), None, iterations=10)
+b, g, r = cv2.split(src)
+rgba = [b, g, r, mask]
+dst = cv2.merge(rgba, 4)
+
+contours, hierarchy = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+selected = max(contours, key=cv2.contourArea)
+x, y, w, h = cv2.boundingRect(selected)
+cropped = dst[y:y+h, x:x+w]
+mask = mask[y:y+h, x:x+w]
+
+# HSV
+hsv_image = cv2.cvtColor(cropped, cv2.COLOR_BGR2HSV)
+image = hsv_image.reshape((hsv_image.shape[0] * hsv_image.shape[1], 3))
+clt = KMeans(n_clusters=3)
+labels = clt.fit_predict(image)
+label_counts = Counter(labels)
+dom_color = clt.cluster_centers_[label_counts.most_common(1)[0][0]]
+
+tes_fitur[0].append(dom_color[0])
+tes_fitur[0].append(dom_color[1])
+tes_fitur[0].append(dom_color[2])
+
+# Normalisasi fitur
+scaler = StandardScaler()
+scaler.fit(fitur)
+
+imputer = SimpleImputer(strategy='mean')
+
+# Melakukan imputasi pada fitur-fitur yang memiliki nilai NaN
+fitur = imputer.fit_transform(fitur)
+tes_fitur = imputer.transform([tes_fitur[0]])  # Ubah ini untuk menggunakan imputasi yang benar
+
+# Menggunakan Gaussian Naive Bayes sebagai classifier
+classifier = GaussianNB()
+classifier.fit(fitur, kelas)
+
+while True:
+    # Melakukan prediksi kelas
+    kelas_pred = classifier.predict(tes_fitur)
+    print("Kelas Prediksi:", kelas_pred[0])
+
+    # Insert kematangan tomat ke dalam database
+    insert_into_database(kelas_pred[0])
+
+    time.sleep(10)
