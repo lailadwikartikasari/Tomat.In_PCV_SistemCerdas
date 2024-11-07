@@ -23,7 +23,7 @@ def insert_into_database(kelas_pred):
     try:
         conn = mysql.connector.connect(**db_config)
         cursor = conn.cursor()
-        query = "INSERT INTO kematangan_tomat (kematangan) VALUES (%s)"
+        query = "INSERT INTO kategori (nama_kategori) VALUES (%s)"
         values = (kelas_pred,)
         cursor.execute(query, values)
         conn.commit()
@@ -86,9 +86,11 @@ def train_classifier(fitur, kelas):
 # Fungsi untuk prediksi dan memasukkan hasil ke database
 def predict_and_store(classifier, tes_fitur):
     kelas_pred = classifier.predict(tes_fitur)
-    print("Kelas Prediksi:", kelas_pred[0])
-    insert_into_database(kelas_pred[0])
+    print("Kelas Prediksi:", kelas_pred[0])  # Pastikan ini berisi nilai yang benar
+    print("Tipe Data:", type(kelas_pred[0])) # Debugging tipe data
+    insert_into_database(str(kelas_pred[0])) # Pastikan dikonversi ke string
     return kelas_pred[0]
+
 
 # Main program
 def main():
