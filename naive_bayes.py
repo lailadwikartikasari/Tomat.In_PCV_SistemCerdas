@@ -23,7 +23,7 @@ def insert_into_database(kelas_pred):
     try:
         conn = mysql.connector.connect(**db_config)
         cursor = conn.cursor()
-        query = "INSERT INTO kategori (nama_kategori) VALUES (%s)"
+        query = "INSERT INTO tomat (id_kategori) VALUES (%s)"
         values = (kelas_pred,)
         cursor.execute(query, values)
         conn.commit()
