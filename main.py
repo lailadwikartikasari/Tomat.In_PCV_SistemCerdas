@@ -30,16 +30,16 @@ class SistemCerdasPCV:
         return piksel_tengah
 
     @staticmethod
-    def label_kematangan(rgb):
-        R, G, B = rgb
+    # def label_kematangan(rgb):
+    #     R, G, B = rgb
         
-        # Atur batasan untuk kematangan berdasarkan nilai RGB
-        if R > 150 and G < 150 and B < 150:  # Merah pekat (R tinggi)
-            return 'Matang'
-        elif R > 120 and G > 120 and B < 130:  # Kuning ke oranye
-            return 'Matang'
-        else:  # Jika tidak memenuhi syarat untuk Merah Pekat, Matang, atau Setengah Matang
-            return 'Matang'
+    #     # Atur batasan untuk kematangan berdasarkan nilai RGB
+    #     if R > 150 and G < 150 and B < 150:  # Merah pekat (R tinggi)
+    #         return 'Matang'
+    #     elif R > 120 and G > 120 and B < 130:  # Kuning ke oranye
+    #         return 'Matang'
+    #     else:  # Jika tidak memenuhi syarat untuk Merah Pekat, Matang, atau Setengah Matang
+    #         return 'Matang'
 
     @staticmethod
     def simpan_hasil(gambar, path_output):
@@ -62,31 +62,31 @@ class SistemCerdasPCV:
 
     @staticmethod
     def proses_gambar(folder_path):
-        data = {'Nama Gambar': [], 'R': [], 'G': [], 'B': [], 'label': []}
+        data = {'Nama Gambar': [], 'R': [], 'G': [], 'B': []}
         
         for namagambar in os.listdir(folder_path):
             path_file = os.path.join(folder_path, namagambar)
             if path_file.lower().endswith(('.png', '.jpg', '.jpeg')):
-                output_path = os.path.join("hasil_removeBG_Matang", f"hasil_{namagambar.split('.')[0]}.png")
+                output_path = os.path.join("hasil_removeBG_hasil_coba", f"hasil_{namagambar.split('.')[0]}.png")
                 SistemCerdasPCV.remove_background(path_file, output_path)
 
                 # Load gambar hasil tanpa latar belakang untuk analisis lanjutan
                 gambar_asli = cv2.imread(output_path, cv2.IMREAD_UNCHANGED)
                 if gambar_asli is not None:
                     rgb_real = SistemCerdasPCV.ambil_rgb_real(gambar_asli)
-                    label = SistemCerdasPCV.label_kematangan(rgb_real)
+                    # label = SistemCerdasPCV.label_kematangan(rgb_real)
 
                     data['Nama Gambar'].append(namagambar)
                     data['R'].append(rgb_real[0])
                     data['G'].append(rgb_real[1])
                     data['B'].append(rgb_real[2])
-                    data['label'].append(label)
+                    # data['label'].append(label)
 
         df = pd.DataFrame(data)
-        df.to_excel('hasil_Matang.xlsx', index=False)
-        print("Data hasil pengolahan disimpan dalam 'hasil_Matang.xlsx'")
+        df.to_excel('hasil_coba.xlsx', index=False)
+        print("Data hasil pengolahan disimpan dalam 'hasil_coba.xlsx'")
 
 if __name__ == "__main__":
-    folder_path = "D:/New folder/Tomat.in/PCV_SistemCerdas_Tomat.In/REVISI/TM_BARU"
+    folder_path = "D:/New folder/pcv_sistem_cerdas/Tomat.In_PCV_SistemCerdas/coba"
     # os.makedirs("hasil_cropping_Setengah Matang", exist_ok=True)
     SistemCerdasPCV.proses_gambar(folder_path)
